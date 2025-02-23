@@ -1,0 +1,1 @@
+alias speedtest-cli='speedtest-cli --bytes'
