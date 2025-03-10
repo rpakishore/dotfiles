@@ -1,10 +1,7 @@
-# aliases.zsh
+# dotfiles
 
-Pull this repo and add the following to the `~/.zshrc` file
+Run the following command to load the configurations
 
 ```bash
-source ~/Documents/Github/dotfiles/aliases.zsh
-source ~/Documents/Github/dotfiles/ssh_ip.zsh
+chmod +x update.sh && ./update.sh
 ```
-
-activate using `source ~/.zshrc`
