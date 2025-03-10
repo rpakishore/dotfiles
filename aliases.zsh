@@ -51,8 +51,7 @@ else
     alias rm='rm -i'  # fallback to interactive remove
 fi
 
-#SSH
-alias shubuntu-server="ssh 100.108.35.103"
-alias shprx-01-gpt="ssh 100.99.54.84"
-alias shrasp-01-mm="ssh 100.124.52.89"
+alias randomstr="openssl rand -base64"
+
+
 
