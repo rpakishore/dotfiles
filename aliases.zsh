@@ -60,3 +60,12 @@ alias ipv6="ip a | grep -w inet6"
 if command -v nvidia-smi &> /dev/null; then
   alias nvidia="watch -n1 nvidia-smi"
 fi
+
+
+docker-update() {
+  sudo find ./docker/compose -name 'docker-compose.yml' -print0 | while IFS= read -r -d '' filepath; do
+    echo "🔄 Updating containers for: $filepath"
+    docker compose -f "$filepath" pull
+    docker compose -f "$filepath" up -d
+  done
+}
