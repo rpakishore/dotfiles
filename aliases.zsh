@@ -63,7 +63,7 @@ fi
 
 
 docker-update() {
-  sudo find ./docker/compose -name 'docker-compose.yml' -print0 | while IFS= read -r -d '' filepath; do
+  sudo find ~/docker -name 'docker-compose.yml' -print0 | while IFS= read -r -d '' filepath; do
     echo "🔄 Updating containers for: $filepath"
     docker compose -f "$filepath" pull
     docker compose -f "$filepath" up -d
