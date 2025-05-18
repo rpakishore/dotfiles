@@ -30,7 +30,6 @@ alias docker-clean=' \
   docker network prune -f ; \
   docker volume prune -f '
 
-alias docker-ps = 'docker ps --all --format "table {{.ID}}\t{{.Image}}\t{{.Names}}\t{{.Ports}}\t{{.Status}}"'
 
 docker-update() {
   sudo find ~/docker -name 'docker-compose.yml' -print0 | while IFS= read -r -d '' filepath; do
@@ -39,6 +38,8 @@ docker-update() {
     docker compose -f "$filepath" up -d
   done
 }
+
+alias docker-ps='docker ps --all --format "table {{.ID}}\t{{.Image}}\t{{.Names}}\t{{.Ports}}\t{{.Status}}"'
 
 
 # Change directory aliases
@@ -67,3 +68,4 @@ alias randomstr="openssl rand -base64"
 
 alias ipv4="ip a | grep -w inet | grep -v inet6"
 alias ipv6="ip a | grep -w inet6"
+
