@@ -39,8 +39,8 @@ docker-update() {
   done
 }
 
-alias docker-ps='docker ps --all --format "table {{.ID}}\t{{.Image}}\t{{.Names}}\t{{.Ports}}\t{{.Status}}"'
-
+alias docker-ps='docker ps --all --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}\t{{.Status}}"'
+alias docker-ps-compact='docker ps --all --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}"'
 
 # Change directory aliases
 alias home='cd ~'
@@ -69,3 +69,4 @@ alias randomstr="openssl rand -base64"
 alias ipv4="ip a | grep -w inet | grep -v inet6"
 alias ipv6="ip a | grep -w inet6"
 
+alias gemini="npx https://github.com/google-gemini/gemini-cli"
