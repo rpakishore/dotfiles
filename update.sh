@@ -5,13 +5,49 @@
 SCRIPTS_SUBDIR_TO_ADD_TO_PATH="scripts"
 
 # Directory (relative to PWD) containing shell configuration snippets to source
-# The original script looked for .zsh files in the current directory (PWD).
-# Use "." for current directory.
 CONFIG_SNIPPETS_DIR_RELATIVE_TO_PWD="."
 
 # Extension of shell configuration snippets to source (e.g., .zsh, .bash, .sh)
-# Original script specifically looked for .zsh files.
 CONFIG_SNIPPET_EXTENSION=".zsh"
+
+# List of default packages to install with apt. Add any packages you need here.
+APT_PACKAGES_TO_INSTALL=(
+    	"git"
+    	"xclip"		# Manipulate clipboard
+    	"fzf"		# Fuzzy file lookup
+	"ncdu"		# Space Lookup
+)
+
+# --- Install Default APT Packages (Idempotent) ---
+# Check if apt-get is available before proceeding
+if ! command -v apt-get &> /dev/null; then
+    echo "INFO: 'apt-get' command not found. Skipping APT package installation."
+else
+    echo "INFO: Checking for required APT packages..."
+    # Prompt for sudo password upfront and refresh timestamp
+    echo "Package installation requires sudo. You may be asked for your password."
+    sudo -v
+
+    # Update package lists once before the loop
+    echo "INFO: Updating package lists with 'sudo apt-get update'..."
+    sudo apt-get update -y
+
+    for pkg in "${APT_PACKAGES_TO_INSTALL[@]}"; do
+        # Use dpkg-query to check if the package is already installed. It's efficient.
+        if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+            echo "INFO: Package '$pkg' is already installed. ✅"
+        else
+            echo "INSTALLING: Attempting to install package '$pkg'..."
+            sudo apt-get install -y "$pkg"
+            # Verify that the package was installed successfully
+            if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+                echo "SUCCESS: Package '$pkg' installed. ✨"
+            else
+                echo "WARNING: Failed to install or verify package '$pkg'. Please check manually. ⚠️" >&2
+            fi
+        fi
+    done
+fi
 
 # --- Determine Target Shell Configuration File ---
 # Prioritize .zshrc, then .bashrc, similar to the original script's implicit logic.
@@ -109,7 +145,7 @@ fi
 
 # --- Final Instructions ---
 echo ""
-echo "INFO: Update of '$TARGET_RC_FILE' complete."
-echo "To apply changes, please run the following command in your terminal:"
+echo "INFO: Setup script finished."
+echo "To apply all changes to your current shell, please run the following command:"
 echo "  $SHELL_RELOAD_COMMAND"
-echo "Alternatively, open a new terminal window/tab."
+echo "Alternatively, you can open a new terminal window/tab."

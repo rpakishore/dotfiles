@@ -1,4 +1,6 @@
 # Builtin command modification
+
+alias update="sudo apt update && sudo apt upgrade -y"
 alias cp='cp -i'
 alias mkdir='mkdir -p'
 alias mv='mv -i'
