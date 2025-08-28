@@ -72,3 +72,5 @@ alias ipv4="ip a | grep -w inet | grep -v inet6"
 alias ipv6="ip a | grep -w inet6"
 
 alias gemini="npx https://github.com/google-gemini/gemini-cli"
+
+alias download='aria2c --continue=true --max-connection-per-server=16 --split=16 --min-split-size=1M --file-allocation=falloc --human-readable --summary-interval=0'
