@@ -12,9 +12,9 @@ CONFIG_SNIPPET_EXTENSION=".zsh"
 
 # List of default packages to install with apt. Add any packages you need here.
 APT_PACKAGES_TO_INSTALL=(
-    	"git"
-    	"xclip"		# Manipulate clipboard
-    	"fzf"		# Fuzzy file lookup
+    "git"
+    "xclip"		# Manipulate clipboard
+    "fzf"		# Fuzzy file lookup
 	"ncdu"		# Space Lookup
 )
 
@@ -126,7 +126,7 @@ if [ ${#FILES_TO_SOURCE[@]} -gt 0 ]; then
                     echo "# $SNIPPETS_COMMENT_SIGNATURE_TEXT" >> "$TARGET_RC_FILE"
                     ADDED_SNIPPETS_COMMENT_FLAG=true
                 elif grep -Fq "$SNIPPETS_COMMENT_SIGNATURE_TEXT" "$TARGET_RC_FILE"; then
-                     # If comment already exists, mark flag as true so we don't try to add it again for subsequent files
+                    # If comment already exists, mark flag as true so we don't try to add it again for subsequent files
                     ADDED_SNIPPETS_COMMENT_FLAG=true
                 fi
                 
