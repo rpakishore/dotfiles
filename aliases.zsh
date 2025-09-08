@@ -80,6 +80,8 @@ fi
 ## ffmpeg
 if command -v ffmpeg >/dev/null 2>&1; then
   alias ffmpeg='ffmpeg -hide_banner -loglevel info'
+  alias ffprobe='ffprobe -v quiet -print_format json -show_format -show_streams'
+  alias ffplay='ffplay -autoexit -hide_banner'
 fi
 ## fzf
 if command -v fzf >/dev/null 2>&1; then
