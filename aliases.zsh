@@ -83,6 +83,13 @@ if command -v ffmpeg >/dev/null 2>&1; then
   alias ffprobe='ffprobe -v quiet -print_format json -show_format -show_streams'
   alias ffplay='ffplay -autoexit -hide_banner'
 fi
+
+# flatpak-OBS
+if command -v flatpak &>/dev/null && flatpak list | grep -q "com.obsproject.Studio"; then
+  # If both are true, create the alias
+  alias obs-start='nohup flatpak run com.obsproject.Studio --startrecording --minimize-to-tray > /dev/null 2>&1 &'
+fi
+
 ## fzf
 if command -v fzf >/dev/null 2>&1; then
   export FZF_DEFAULT_OPTS='--color 16 --layout=reverse --border top'
