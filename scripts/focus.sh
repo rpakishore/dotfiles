@@ -8,18 +8,17 @@
 #
 # Author:      Based on concept from paepper.com
 #              (https://www.paepper.com/blog/posts/how-i-hacked-my-clock-to-control-my-focus.md/)
-# Version:     1.2 (Added Session Timer, getopts, improved robustness)
-# Date:        May 14, 2025
+# Version:     2.0 (Refactored logic, added status, improved performance)
+# Date:        September 10, 2025
 #
 # Requirements:
 #   1. GNOME Shell environment.
 #   2. `dconf`: Command-line utility for GNOME settings.
 #   3. `sleep`: Command that supports duration suffixes (e.g., '25m', '1h').
-#      (Standard on most Linux distributions and macOS).
 #   4. A GNOME Shell extension for custom panel date/time format via dconf.
 #      Default key: /org/gnome/shell/extensions/panel-date-format/format
 #      (e.g., "Panel Date Format" extension). Update DCONF_KEY if needed.
-#   5. Optional: `notify-send` for desktop notifications when timer ends.
+#   5. `notify-send` for desktop notifications when timer ends.
 #
 # Usage:
 #   ./focus.sh [OPTIONS] [FOCUS_MESSAGE] [TIMER_DURATION]
@@ -29,6 +28,7 @@
 #   -t DURATION    : Set a timer for the focus (e.g., "25m", "1h", "90s").
 #                    Requires -m or a positional FOCUS_MESSAGE.
 #                    The focus message will be cleared after DURATION.
+#   -s             : Check the status of the current focus session.
 #   -c             : Clear the current focus message and any active timer.
 #   -h             : Display this help message.
 #
@@ -45,24 +45,27 @@
 #     ./focus.sh -m "Coding Sprint" -t 45m
 #     ./focus.sh "Read Chapter 5" 30m
 #
+#   Check status:
+#     ./focus.sh -s
+#
 #   Clear focus:
 #     ./focus.sh -c
-#     Run script and enter blank focus when prompted.
 #
 #   Interactive mode (if no arguments):
 #     ./focus.sh
-#     (Prompts for focus; timer not available in interactive mode via prompt)
 #
 # How it works:
 #   Uses `dconf` to change the GNOME panel clock format. For timers, it
 #   starts a background process that sleeps for the specified duration and
-#   then resets the clock format. A PID file is used to manage the timer.
+#   then resets the clock format. A PID file is used to manage the timer
+#   state, including the PID, end time, and focus message.
 # ==============================================================================
 
 # --- Configuration ---
 DCONF_KEY="/org/gnome/shell/extensions/panel-date-format/format"
-DEFAULT_FORMAT="'%b %d  %H:%M'" # Example: 'May 14  09:30'
-PID_FILE="/tmp/gnome_focus_timer.pid" # File to store the PID of the timer process
+DEFAULT_FORMAT="'%b %d  %H:%M'" # Example: 'Sep 10  09:30'
+# File to store timer info: PID;END_TIMESTAMP;FOCUS_MESSAGE
+PID_FILE="/tmp/gnome_focus_timer.pid"
 
 # --- Helper Functions ---
 
@@ -75,6 +78,7 @@ display_help() {
     echo "Options:"
     echo "  -m \"MESSAGE\"   Set the focus message."
     echo "  -t DURATION    Set a timer (e.g., \"25m\", \"1h\"). Requires a focus message."
+    echo "  -s             Check status of the current focus session."
     echo "  -c             Clear current focus message and timer."
     echo "  -h             Display this help message."
     echo ""
@@ -85,37 +89,64 @@ display_help() {
     echo "Examples:"
     echo "  $0 -m \"Deep Work\" -t 1h"
     echo "  $0 \"Client Project\" 45m"
+    echo "  $0 -s"
     echo "  $0 -c"
     echo "  $0 (interactive mode)"
 }
 
 # Function to kill any existing timer process
 kill_existing_timer() {
-    if [ -f "$PID_FILE" ]; then
+    if [[ -f "$PID_FILE" ]]; then
+        # Read only the PID, which is the first field before a semicolon
         local old_pid
-        old_pid=$(cat "$PID_FILE")
-        if ps -p "$old_pid" > /dev/null 2>&1; then
+        old_pid=$(cut -d';' -f1 "$PID_FILE")
+        if [[ -n "$old_pid" && ps -p "$old_pid" > /dev/null 2>&1 ]]; then
             kill "$old_pid" 2>/dev/null
         fi
         rm -f "$PID_FILE"
     fi
 }
 
+# Function to display status of the current focus session
+display_status() {
+    if [[ ! -f "$PID_FILE" ]]; then
+        echo "No active focus session."
+        exit 0
+    fi
+
+    # Read PID, end time, and message from the file
+    IFS=';' read -r pid end_time focus_text < "$PID_FILE"
+
+    if [[ -z "$pid" || ! ps -p "$pid" > /dev/null 2>&1 ]]; then
+        echo "Stale focus session found. Clearing."
+        rm -f "$PID_FILE"
+        exit 1
+    fi
+
+    local now
+    now=$(date +%s)
+    local remaining_seconds=$((end_time - now))
+
+    if [[ "$remaining_seconds" -le 0 ]]; then
+        echo "Focus session for '$focus_text' has just ended or is stale."
+    else
+        local mins=$((remaining_seconds / 60))
+        local secs=$((remaining_seconds % 60))
+        echo "Active focus: '$focus_text'"
+        printf "Time remaining: %d minutes and %d seconds\n" "$mins" "$secs"
+    fi
+}
+
 # Function to set the GNOME focus message, optionally with a timer
-# Arguments:
-#   $1: Focus text string
-#   $2: Timer duration string (e.g., "25m", "1h", or empty for no timer)
 set_gnome_focus() {
     local focus_text="$1"
     local timer_duration="$2"
 
-    # Trim whitespace from focus_text
-    focus_text=$(echo "$focus_text" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    # The calling logic should already trim, but as a safeguard:
+    read -r focus_text <<< "$focus_text"
 
-    if [ -z "$focus_text" ]; then
+    if [[ -z "$focus_text" ]]; then
         echo "Error: Focus text cannot be empty when setting focus. Use -c to clear." >&2
-        # Or, if desired, could call clear_gnome_focus here.
-        # For now, exiting as it's likely a usage error if this function is called with empty.
         exit 1
     fi
 
@@ -125,42 +156,34 @@ set_gnome_focus() {
     dconf write "$DCONF_KEY" "$new_format"
     echo "Focus set to: $focus_text"
 
-    if [ -n "$timer_duration" ]; then
-        # Basic validation for timer_duration. `sleep` will do more thorough checking.
-        # This regex is very basic and mainly checks for common patterns.
-        # `sleep` often supports more complex inputs like "1.5h".
+    if [[ -n "$timer_duration" ]]; then
         if ! echo "$timer_duration" | grep -Eq '^[0-9]+(\.[0-9]+)?[smhd]?$|^[0-9]+[smhd]$'; then
-            echo "Warning: Timer duration '$timer_duration' format might be unusual. `sleep` will attempt to parse it."
+            echo "Warning: Timer duration '$timer_duration' format might be unusual. \`sleep\` will attempt to parse it."
         fi
 
         # Start the timer process in the background
         (
             # This subshell runs in the background.
-            # It inherits DCONF_KEY, DEFAULT_FORMAT, PID_FILE, and focus_text.
-            # BASHPID refers to the PID of this subshell.
-
-            # Sleep for the specified duration.
-            # Errors from sleep (e.g., invalid format) are suppressed from stdout/stderr here.
             sleep "$timer_duration" 2>/dev/null
 
             # After waking up, check if this timer is still the "active" one.
-            # This prevents a stale timer (whose PID was overwritten in PID_FILE by a newer timer,
-            # or removed by a clear command) from incorrectly clearing the focus.
-            if [ -f "$PID_FILE" ] && [ "$(cat "$PID_FILE")" -eq "$BASHPID" ]; then
+            local current_pid_from_file
+            current_pid_from_file=$(cut -d';' -f1 "$PID_FILE")
+            if [[ -f "$PID_FILE" && "$current_pid_from_file" == "$BASHPID" ]]; then
                 dconf write "$DCONF_KEY" "$DEFAULT_FORMAT"
                 echo "[Timer] Focus session for '$focus_text' ended. Clock format reset."
-                # Optional: Send a desktop notification. Requires `notify-send`.
-                # if command -v notify-send >/dev/null; then
-                #    notify-send "Focus Timer Ended" "Session for '$focus_text' is complete."
-                # fi
+                # Send a desktop notification.
+                if command -v notify-send >/dev/null; then
+                   notify-send "Focus Timer Ended" "Session for '$focus_text' is complete."
+                fi
                 rm -f "$PID_FILE" # Clean up its own PID file as it completed.
-            # else
-                # This timer was superseded or cleared externally. Do nothing.
-                # echo "[Timer] Stale timer for '$focus_text' exiting without action." # For debugging
             fi
-        ) &
-        local timer_pid=$! # Get the PID of the backgrounded subshell
-        echo "$timer_pid" > "$PID_FILE" # Store it
+        ) & # The '&' here is crucial for backgrounding
+        local timer_pid=$!
+        local end_time
+        end_time=$(date -d "now + $timer_duration" +%s)
+        # Store PID, end time, and the original focus text
+        echo "$timer_pid;$end_time;$focus_text" > "$PID_FILE"
         echo "Timer active for $timer_duration. Focus will be cleared automatically."
         echo "(Timer PID: $timer_pid)"
     fi
@@ -180,18 +203,18 @@ opt_focus_message=""
 opt_timer_duration=""
 opt_clear_focus=false
 opt_show_help=false
+opt_show_status=false
 
 # Parse command-line options using getopts
-# The leading colon in ":m:t:ch" enables silent error handling for invalid options / missing args,
-# allowing custom messages.
-while getopts ":m:t:ch" opt; do
+while getopts ":m:t:sch" opt; do
   case $opt in
-    m) opt_focus_message="$OPTARG" ;;
-    t) opt_timer_duration="$OPTARG" ;;
-    c) opt_clear_focus=true ;;
-    h) opt_show_help=true ;;
-    \?) echo "Error: Invalid option -$OPTARG" >&2; display_help; exit 1 ;;
-    :) echo "Error: Option -$OPTARG requires an argument." >&2; display_help; exit 1 ;;
+    m) opt_focus_message="$OPTARG" ;; 
+    t) opt_timer_duration="$OPTARG" ;; 
+    s) opt_show_status=true ;; 
+    c) opt_clear_focus=true ;; 
+    h) opt_show_help=true ;; 
+    \?) echo "Error: Invalid option -$OPTARG" >&2; display_help; exit 1 ;; 
+    :) echo "Error: Option -$OPTARG requires an argument." >&2; display_help; exit 1 ;; 
   esac
 done
 # Shift processed options away, so $1, $2, etc. refer to remaining non-option arguments
@@ -199,101 +222,58 @@ shift $((OPTIND-1))
 
 # --- Determine and Execute Action ---
 
-# Handle -h (help) first
-if $opt_show_help; then
+# 1. Handle exclusive options that cause an immediate exit
+if [[ "$opt_show_help" == true ]]; then
     display_help
     exit 0
 fi
 
-# Handle -c (clear focus)
-if $opt_clear_focus; then
-    # -c takes precedence. If -c is present, other focus-setting options are ignored.
+if [[ "$opt_clear_focus" == true ]]; then
     clear_gnome_focus
     exit 0
 fi
 
-# Handle setting focus if -m was used
-if [ -n "$opt_focus_message" ]; then
-    # Trim whitespace from message provided by -m
-    opt_focus_message_trimmed=$(echo "$opt_focus_message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    if [ -z "$opt_focus_message_trimmed" ]; then
-        # Treat -m "" (empty message) as a request to clear focus for consistency
-        echo "Focus message provided with -m is empty. Clearing focus."
-        clear_gnome_focus
-    else
-        set_gnome_focus "$opt_focus_message_trimmed" "$opt_timer_duration"
-    fi
+if [[ "$opt_show_status" == true ]]; then
+    display_status
     exit 0
 fi
 
-# If -t was used without -m, it's an error (unless positional message is provided later)
-if [ -n "$opt_timer_duration" ] && [ -z "$opt_focus_message" ]; then
-    # Check if there's a positional argument that could be the message
-    if [ $# -eq 0 ]; then # No positional arguments left
-        echo "Error: Timer (-t) specified without a focus message (-m or positional)." >&2
-        display_help
-        exit 1
-    fi
-    # If there are positional args, they will be handled next.
-fi
+# 2. Determine the final message and timer from all available sources
+#    Flags (-m, -t) take precedence over positional arguments ($1, $2).
+final_message="${opt_focus_message:-$1}"
+final_timer="${opt_timer_duration:-$2}"
 
-# Handle positional arguments if no primary option (-m, -c, -h) has led to an exit yet
-if [ $# -gt 0 ]; then
-    # First positional argument is the focus message
-    pos_focus_message="$1"
-    pos_timer_duration="" # Default to no timer from positional args
-
-    if [ $# -gt 1 ]; then
-        # Second positional argument (if present) is the timer duration
-        pos_timer_duration="$2"
-    fi
-    
-    # If -t was specified earlier, but -m was not, and we now have a positional message.
-    # Prioritize -t if it was explicitly given.
-    if [ -n "$opt_timer_duration" ] && [ -z "$pos_timer_duration" ]; then
-        pos_timer_duration="$opt_timer_duration"
-    fi
-
-    # Trim whitespace from positional focus message
-    pos_focus_message_trimmed=$(echo "$pos_focus_message" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-    if [ -z "$pos_focus_message_trimmed" ]; then
-        # Empty positional focus message means clear
+# 3. Act based on the determined message and timer
+if [[ -n "$final_message" ]]; then
+    # A message was provided via -m or positional arg.
+    # Trim whitespace to check if it's effectively empty.
+    read -r final_message_trimmed <<< "$final_message"
+    if [[ -z "$final_message_trimmed" ]]; then
+        # Treat empty message as a request to clear.
+        echo "Focus message is empty. Clearing focus."
         clear_gnome_focus
     else
-        set_gnome_focus "$pos_focus_message_trimmed" "$pos_timer_duration"
+        set_gnome_focus "$final_message_trimmed" "$final_timer"
     fi
-    exit 0
-fi
-
-# Interactive mode: if no options or arguments resulted in an action
-# This condition means: not -h, not -c, no -m, no positional args,
-# AND if -t was given, it didn't have a message from -m or positional.
-if [ -z "$opt_focus_message" ] && ! $opt_clear_focus && ! $opt_show_help && [ $# -eq 0 ]; then
-    if [ -n "$opt_timer_duration" ]; then # Case: only -t was given, no message
-        echo "Error: Timer (-t) specified without a focus message (-m or positional)." >&2
-        display_help
-        exit 1
-    fi
-
+elif [[ -n "$final_timer" ]]; then
+    # A timer was provided (-t or positional) but there was no message.
+    echo "Error: Timer specified without a focus message (-m or positional)." >&2
+    display_help
+    exit 1
+else
+    # No arguments were provided at all, so enter interactive mode.
     echo "What's your current focus? (Leave blank to clear focus)"
-    read -r interactive_focus_text # -r to prevent backslash interpretation
+    read -r interactive_focus_text
 
     # Trim whitespace
-    interactive_focus_text_trimmed=$(echo "$interactive_focus_text" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    read -r interactive_focus_text_trimmed <<< "$interactive_focus_text"
 
-    if [ -z "$interactive_focus_text_trimmed" ]; then
+    if [[ -z "$interactive_focus_text_trimmed" ]]; then
         clear_gnome_focus
     else
-        # No timer option via interactive prompt in this version for simplicity
+        # No timer option via interactive prompt for simplicity
         set_gnome_focus "$interactive_focus_text_trimmed" ""
     fi
-    exit 0
 fi
 
-# If script reaches here, it means some combination of inputs was not handled
-# or was ambiguous. Display help as a fallback.
-# This typically shouldn't be reached if logic above is complete.
-# echo "Debug: Unhandled argument combination." # For debugging
-display_help
-exit 1
+exit 0
