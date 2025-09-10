@@ -100,7 +100,7 @@ kill_existing_timer() {
         # Read only the PID, which is the first field before a semicolon
         local old_pid
         old_pid=$(cut -d';' -f1 "$PID_FILE")
-        if [[ -n "$old_pid" && ps -p "$old_pid" > /dev/null 2>&1 ]]; then
+        if [[ -n "$old_pid" ]] && ps -p "$old_pid" > /dev/null 2>&1; then
             kill "$old_pid" 2>/dev/null
         fi
         rm -f "$PID_FILE"
@@ -109,31 +109,51 @@ kill_existing_timer() {
 
 # Function to display status of the current focus session
 display_status() {
-    if [[ ! -f "$PID_FILE" ]]; then
-        echo "No active focus session."
-        exit 0
-    fi
+    if [[ -f "$PID_FILE" ]]; then
+        # Timer-based focus session is active or stale.
+        IFS=';' read -r pid end_time focus_text < "$PID_FILE"
 
-    # Read PID, end time, and message from the file
-    IFS=';' read -r pid end_time focus_text < "$PID_FILE"
+        if [[ -z "$pid" ]] || ! ps -p "$pid" > /dev/null 2>&1; then
+            echo "Stale focus session found. Clearing..."
+            rm -f "$PID_FILE"
+            # Check dconf as a fallback to see if a non-timed focus is set
+            local current_format
+            current_format=$(dconf read "$DCONF_KEY")
+            if [[ "$current_format" != "$DEFAULT_FORMAT" && "$current_format" =~ Focus:\ (.*)\'$ ]]; then
+                local focus_text="${BASH_REMATCH[1]}"
+                echo "Found non-timed focus: '$focus_text'"
+            else
+                echo "No active focus session."
+            fi
+            exit 0 # Exit cleanly after clearing stale session
+        fi
 
-    if [[ -z "$pid" || ! ps -p "$pid" > /dev/null 2>&1 ]]; then
-        echo "Stale focus session found. Clearing."
-        rm -f "$PID_FILE"
-        exit 1
-    fi
+        local now
+        now=$(date +%s)
+        local remaining_seconds=$((end_time - now))
 
-    local now
-    now=$(date +%s)
-    local remaining_seconds=$((end_time - now))
-
-    if [[ "$remaining_seconds" -le 0 ]]; then
-        echo "Focus session for '$focus_text' has just ended or is stale."
+        if [[ "$remaining_seconds" -le 0 ]]; then
+            echo "Focus session for '$focus_text' has just ended or is stale."
+        else
+            local mins=$((remaining_seconds / 60))
+            local secs=$((remaining_seconds % 60))
+            echo "Active focus: '$focus_text'"
+            printf "Time remaining: %d minutes and %d seconds\n" "$mins" "$secs"
+        fi
     else
-        local mins=$((remaining_seconds / 60))
-        local secs=$((remaining_seconds % 60))
-        echo "Active focus: '$focus_text'"
-        printf "Time remaining: %d minutes and %d seconds\n" "$mins" "$secs"
+        # No timer file, check dconf for a manually set focus message.
+        local current_format
+        current_format=$(dconf read "$DCONF_KEY")
+
+        if [[ "$current_format" == "$DEFAULT_FORMAT" ]]; then
+            echo "No active focus session."
+        elif [[ "$current_format" =~ Focus:\ (.*)\'$ ]]; then
+            local focus_text="${BASH_REMATCH[1]}"
+            echo "Active focus (no timer): '$focus_text'"
+        else
+            echo "A custom clock format is set, but it may not be a focus session."
+            echo "Current format: $current_format"
+        fi
     fi
 }
 
@@ -181,7 +201,7 @@ set_gnome_focus() {
         ) & # The '&' here is crucial for backgrounding
         local timer_pid=$!
         local end_time
-        end_time=$(date -d "now + $timer_duration" +%s)
+        end_time=$(date -d "now + $(echo "$timer_duration" | sed -e 's/m/ minutes/' -e 's/h/ hours/' -e 's/s/ seconds/')" +%s)
         # Store PID, end time, and the original focus text
         echo "$timer_pid;$end_time;$focus_text" > "$PID_FILE"
         echo "Timer active for $timer_duration. Focus will be cleared automatically."
