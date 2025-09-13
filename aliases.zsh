@@ -68,8 +68,14 @@ fi
 
 ## docker
 if command -v docker >/dev/null 2>&1; then
-  alias docker-ps='docker ps --all --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}\t{{.Status}}"'
-  alias docker-ps-compact='docker ps --all --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}"'
+  if command -v batcat >/dev/null 2>&1; then
+    alias docker-ps='docker ps --all --size --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}\t{{.Status}}\t{{.Size}}" | batcat -l conf'
+    alias docker-ps-compact='docker ps --all --size --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}\t{{.Size}}" | batcat -l conf'
+  else
+    alias docker-ps='docker ps --all --size --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}\t{{.Status}}\t{{.Size}}"'
+    alias docker-ps-compact='docker ps --all --size --format "table {{.ID}}\t{{.Names}}\t{{.Ports}}\t{{.Size}}"'
+  fi
+  
   alias docker-clean=' \
   docker container prune -f ; \
   docker image prune -f ; \
