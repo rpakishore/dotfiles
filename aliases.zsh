@@ -50,6 +50,10 @@ alias ipv6="ip a | grep -w inet6"
 
 alias gemini="npx https://github.com/google-gemini/gemini-cli"
 
+# Custom Scripts
+
+alias transcribe="uv run https://gist.githubusercontent.com/rpakishore/7d33e4063947d42643c2b9fda382ed69/raw/transcribe.py"
+
 # External Programs
 
 ## aria2c (sudo snap install aria2c)
@@ -88,6 +92,10 @@ if command -v ffmpeg >/dev/null 2>&1; then
   alias ffmpeg='ffmpeg -hide_banner -loglevel info'
   alias ffprobe='ffprobe -v quiet -print_format json -show_format -show_streams'
   alias ffplay='ffplay -autoexit -hide_banner'
+fi
+
+if command -v firejail >/dev/null 2>&1; then
+  alias firejail='firejail --net=none --seccomp --private=.'
 fi
 
 # flatpak-OBS
