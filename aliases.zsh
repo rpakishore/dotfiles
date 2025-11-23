@@ -65,8 +65,8 @@ fi
 if command -v batcat >/dev/null 2>&1; then
   alias bat="batcat"
   alias lb='ls | batcat'
-  alias -g -- -h='-h 2>&1 | batcat --language=help --style=plain'
-  alias -g -- --help='--help 2>&1 | batcat --language=help --style=plain'
+  # alias -g -- -h='-h 2>&1 | batcat --language=help --style=plain'
+  # alias -g -- --help='--help 2>&1 | batcat --language=help --style=plain'
 fi
 
 
